@@ -1,0 +1,134 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// -----------------------------------------------------------------------------
+// Enums
+// -----------------------------------------------------------------------------
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum CampaignStatus {
+  PENDING
+  ACTIVE
+  PAUSED
+  COMPLETED
+  FAILED
+}
+
+enum TransactionType {
+  DEPOSIT
+  SPEND
+  REFUND
+  LOCK
+  UNLOCK
+}
+
+enum PaymentProvider {
+  BKASH
+  NAGAD
+  SSLCOMMERZ
+  SYSTEM
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+// -----------------------------------------------------------------------------
+// Models
+// -----------------------------------------------------------------------------
+
+model User {
+  id    String  @id @default(cuid())
+  email String  @unique
+  name  String?
+  role  Role    @default(USER)
+
+  // Double-Entry Ledger: Balance stored as Decimal(10,2) for BDT.
+  // Using Decimal prevents floating-point precision issues.
+  availableBalanceBdt Decimal @default(0.00) @db.Decimal(10, 2)
+  lockedBalanceBdt    Decimal @default(0.00) @db.Decimal(10, 2)
+
+  campaigns    Campaign[]
+  transactions Transaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+}
+
+model Campaign {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Meta specific fields
+  metaPageId      String
+  metaAdAccountId String?
+
+  // Financials
+  // Budget in USD (Decimal(10,2))
+  budgetUsd Decimal @db.Decimal(10, 2)
+  // Amount spent/deducted in BDT (Decimal(10,2))
+  spentBdt  Decimal @default(0.00) @db.Decimal(10, 2)
+
+  status CampaignStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Transaction {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Double-Entry Ledger: Amount in BDT (Decimal(10,2))
+  // Positive for DEPOSIT/REFUND, Negative for SPEND
+  amountBdt Decimal @db.Decimal(10, 2)
+
+  type     TransactionType
+  provider PaymentProvider
+
+  // Unique transaction ID from the payment gateway (e.g., bKash TrxID)
+  providerTrxId String? @unique
+
+  status TransactionStatus @default(PENDING)
+
+  // Optional metadata for storing raw gateway responses or internal notes
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([providerTrxId])
+  @@index([createdAt])
+}
+
+model SystemSettings {
+  // Enforce a single row for global settings using a static ID
+  id String @id @default("default")
+
+  // USD to BDT exchange rate (Decimal(10,2))
+  exchangeRate Decimal @db.Decimal(10, 2)
+
+  // Additional service fee percentage (e.g., 5.00 for 5%)
+  serviceFeePercentage Decimal @default(0.00) @db.Decimal(5, 2)
+
+  updatedAt DateTime @updatedAt
+}
