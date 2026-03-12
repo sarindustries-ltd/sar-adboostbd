@@ -1,17 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { DollarSign, TrendingUp, CheckCircle, Activity, AlertCircle, RefreshCw, Settings, ShieldCheck, ArrowLeft } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { DollarSign, TrendingUp, CheckCircle, Activity, AlertCircle, RefreshCw, Settings, ShieldCheck, ArrowLeft, LogOut } from "lucide-react";
 import Link from "next/link";
-
-interface Campaign {
-  id: string;
-  pageName: string;
-  budgetUsd: number;
-  status: string;
-  userBdtCharged: number;
-  createdAt: string;
-}
+import Image from "next/image";
+import { toast } from "sonner";
+import { motion } from "motion/react";
+import { signOut } from "next-auth/react";
+import { Campaign } from "@/types";
 
 export function AdminDashboard() {
   const [rate, setRate] = useState<number>(120);
@@ -22,24 +18,24 @@ export function AdminDashboard() {
   const [updatingRate, setUpdatingRate] = useState(false);
   const [approvingId, setApprovingId] = useState<string | null>(null);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/wallet");
+      if (!res.ok) throw new Error("Failed to fetch admin data");
       const data = await res.json();
       setWallet({ totalBdtCollected: data.totalBdtCollected, totalUsdSpent: data.totalUsdSpent });
       setRate(data.currentRate);
       setCampaigns(data.campaigns);
     } catch (error) {
-      console.error("Failed to fetch admin data", error);
+      toast.error("Failed to fetch admin data");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   const handleUpdateRate = async () => {
     if (!newRate || Number(newRate) <= 0) return;
@@ -50,14 +46,14 @@ export function AdminDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rate: Number(newRate) }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setRate(data.rate);
-        setNewRate("");
-        alert("Global Exchange Rate updated successfully!");
-      }
-    } catch (error) {
-      console.error("Failed to update rate", error);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update rate");
+      
+      setRate(data.rate);
+      setNewRate("");
+      toast.success("Global Exchange Rate updated successfully!");
+    } catch (error: any) {
+      toast.error(error.message);
     } finally {
       setUpdatingRate(false);
     }
@@ -71,16 +67,14 @@ export function AdminDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ campaignId }),
       });
-      if (res.ok) {
-        // Refresh data to show updated wallet and campaign status
-        await fetchData();
-        alert("Ad approved and launched on Meta successfully!");
-      } else {
-        const err = await res.json();
-        alert(`Error: ${err.error}`);
-      }
-    } catch (error) {
-      console.error("Failed to approve ad", error);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to approve ad");
+      
+      // Refresh data to show updated wallet and campaign status
+      await fetchData();
+      toast.success("Ad approved and launched on Meta successfully!");
+    } catch (error: any) {
+      toast.error(error.message);
     } finally {
       setApprovingId(null);
     }
@@ -89,7 +83,7 @@ export function AdminDashboard() {
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <RefreshCw className="w-8 h-8 text-indigo-500 animate-spin" />
+        <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -117,17 +111,28 @@ export function AdminDashboard() {
           
           <div className="flex items-center gap-4">
             <span className="hidden sm:inline-block text-sm font-medium text-emerald-400 bg-emerald-400/10 px-3 py-1 rounded-full border border-emerald-400/20 backdrop-blur-sm">System Token: Active</span>
-            <div className="w-8 h-8 rounded-full bg-slate-800 border-2 border-slate-700 overflow-hidden shadow-sm">
-              <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Admin" alt="Admin Avatar" />
+            <div className="w-8 h-8 rounded-full bg-slate-800 border-2 border-slate-700 overflow-hidden shadow-sm relative">
+              <Image src="https://api.dicebear.com/7.x/avataaars/svg?seed=Admin" alt="Admin Avatar" fill className="object-cover" referrerPolicy="no-referrer" />
             </div>
+            <button 
+              onClick={() => signOut({ callbackUrl: '/' })}
+              className="p-2 bg-white/5 hover:bg-red-500/20 rounded-full transition-colors text-slate-400 hover:text-red-400"
+              title="Sign Out"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </header>
 
       <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         
-        {/* Master Wallet & Settings Grid (Dark Glass) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="grid grid-cols-1 md:grid-cols-3 gap-6"
+        >
           {/* Total BDT Collected */}
           <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-6 rounded-3xl shadow-[0_8px_32px_0_rgba(0,0,0,0.3)]">
             <div className="flex items-center justify-between mb-4">
@@ -187,10 +192,15 @@ export function AdminDashboard() {
               </button>
             </div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Pending Campaigns Table (Dark Glass) */}
-        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl shadow-[0_8px_32px_0_rgba(0,0,0,0.3)] overflow-hidden">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+          className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl shadow-[0_8px_32px_0_rgba(0,0,0,0.3)] overflow-hidden"
+        >
           <div className="p-6 border-b border-white/10">
             <h2 className="text-lg font-semibold text-white">Ad Approval Queue</h2>
             <p className="text-sm text-slate-400 mt-1">Review and approve user campaigns to trigger Meta API.</p>
@@ -257,7 +267,7 @@ export function AdminDashboard() {
               </tbody>
             </table>
           </div>
-        </div>
+        </motion.div>
 
       </main>
     </div>

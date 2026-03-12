@@ -1,9 +1,24 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { z } from "zod";
+
+const approveSchema = z.object({
+  campaignId: z.string().min(1, "Campaign ID is required"),
+});
 
 export async function POST(req: Request) {
   try {
-    const { campaignId } = await req.json();
+    const body = await req.json();
+    const result = approveSchema.safeParse(body);
+
+    if (!result.success) {
+      return NextResponse.json(
+        { error: result.error.issues[0].message },
+        { status: 400 }
+      );
+    }
+
+    const { campaignId } = result.data;
 
     // 1. Find the pending campaign
     const campaign = db.campaigns.find((c) => c.id === campaignId);
@@ -43,6 +58,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, campaign, metaResponse });
   } catch (error) {
+    console.error("Approve campaign error:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

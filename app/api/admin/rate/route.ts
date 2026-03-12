@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { z } from "zod";
+
+const rateSchema = z.object({
+  rate: z.number().positive("Rate must be greater than 0"),
+});
 
 export async function GET() {
   return NextResponse.json({
@@ -10,11 +15,17 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const { rate } = await req.json();
+    const body = await req.json();
+    const result = rateSchema.safeParse(body);
     
-    if (!rate || typeof rate !== "number" || rate <= 0) {
-      return NextResponse.json({ error: "Invalid rate" }, { status: 400 });
+    if (!result.success) {
+      return NextResponse.json(
+        { error: result.error.issues[0].message },
+        { status: 400 }
+      );
     }
+
+    const { rate } = result.data;
 
     // In a real NestJS/Prisma backend, this would be:
     // await prisma.settings.update({ where: { key: 'USD_TO_BDT_RATE' }, data: { value: rate } })
@@ -22,6 +33,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, rate: db.settings.usdToBdtRate });
   } catch (error) {
+    console.error("Update rate error:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
